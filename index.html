@@ -248,13 +248,6 @@ body.selmode .toast{bottom:calc(270px + env(safe-area-inset-bottom))}
 .item .ck{width:22px;height:22px;border-radius:7px;border:2px solid var(--mute);flex:none;display:grid;place-items:center;font-size:13px;color:#fff}
 .item.sel{background:var(--accent-soft);border-radius:12px}
 .item.sel .ck{background:var(--accent);border-color:var(--accent)}
-/* 📥 받은편지함 */
-.inboxbar{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin:0 0 14px;padding:13px 14px;border-radius:20px;background:var(--accent);color:#fff;font-family:var(--cute);font-size:17px;box-shadow:0 4px 0 var(--accent-deep);animation:up .25s ease}
-.inboxbar[hidden]{display:none}
-.inboxbar b{background:#fff;color:var(--accent-deep);border-radius:99px;padding:1px 9px;font-weight:400}
-.keybox{background:var(--bg);border:2px dashed var(--line);border-radius:14px;padding:10px 12px;margin:6px 0;font-size:13px;word-break:break-all;font-family:ui-monospace,Menlo,monospace}
-.steps{margin:6px 0 0;padding-left:20px;font-size:13.5px;line-height:1.7}
-.steps code{background:var(--bg);border-radius:6px;padding:1px 5px;font-size:12.5px}
 </style>
 </head>
 <body>
@@ -266,7 +259,6 @@ body.selmode .toast{bottom:calc(270px + env(safe-area-inset-bottom))}
     <div><div class="t" id="helloText">안녕! 🐰</div><div class="d" id="helloDate"></div></div>
     <div class="streak" id="streak"></div>
   </div>
-  <button class="inboxbar" id="inboxBar" hidden></button>
   <div class="card" id="summary"></div>
   <div id="alertBox"></div>
 
@@ -407,16 +399,6 @@ body.selmode .toast{bottom:calc(270px + env(safe-area-inset-bottom))}
       <button class="btn ghost" id="syncHistory">🕰 예전 저장본</button>
       <button class="btn danger" id="syncLogout">로그아웃</button>
     </div>
-  </div>
-  <div class="card" id="inboxCard" hidden>
-    <h2>📥 카드 문자 자동으로 받기</h2>
-    <p class="small dim" style="margin:0 0 8px">폰의 <b>MacroDroid</b> 앱이 카드 문자·알림을 이 가계부로 보내 줘요. 앱을 열면 "새로 들어온 결제"로 떠서, 확인만 누르면 기록돼요.</p>
-    <div id="inboxKeyInfo" class="small" style="margin:0 0 10px"></div>
-    <div class="row" style="flex-wrap:wrap">
-      <button class="btn ghost" id="inboxMakeKey">🔑 연결 열쇠 만들기</button>
-      <button class="btn ghost" id="inboxCheck">📥 지금 확인</button>
-    </div>
-    <div id="inboxSetup" hidden></div>
   </div>
   <div class="card">
     <h2>💾 백업</h2>
@@ -806,7 +788,6 @@ const Sync = {
     if(!j.email){ location.replace('login.html'); return; }
     this.on = true; this.email = j.email; this.setMeta({email:j.email});
     this.render();
-    try{ Inbox.renderSettings(); }catch(e){}
     await this.pull();
   },
   markDirty(){
@@ -852,7 +833,6 @@ const Sync = {
     }catch(e){ this.set(navigator.onLine===false ? 'offline' : 'error'); }
     finally{ this.busy = false; }
     if(this.meta().dirty) await this.push();
-    try{ Inbox.refresh(); }catch(e){}
   },
   async push(){
     if(!this.on) return;
@@ -1530,7 +1510,7 @@ function openPaste(text){
   if(text){ $('#pasteText').value = text; runParse(); }
 }
 $('#pasteBtn').onclick = ()=>openPaste();
-$('#pasteClose').onclick = ()=>{ $('#pasteSheet').classList.remove('on'); Inbox.closed(); };
+$('#pasteClose').onclick = ()=>$('#pasteSheet').classList.remove('on');
 $('#parseBtn').onclick = runParse;
 $('#pasteText').addEventListener('paste', ()=>setTimeout(runParse,0));
 $('#clipBtn').onclick = async ()=>{
@@ -1548,90 +1528,8 @@ $('#pasteAdd').onclick = ()=>{
   $('#pasteSheet').classList.remove('on');
   celebrate($('#pasteBtn'), Math.min(chosen.length+2,8));
   toast(`💌 ${chosen.length}건 한 번에 기록했어!`);
-  Inbox.done();
 };
 
-/* ================= 📥 받은편지함 (MacroDroid가 보낸 카드 문자·알림) ================= */
-const Inbox = {
-  items: [], reviewing: [], lastKey: '',
-  async refresh(){
-    if(!Sync.on) return;
-    try{
-      const r = await fetch('api/inbox', {cache:'no-store'});
-      if(!r.ok) return;
-      this.items = (await r.json()).items || [];
-    }catch(e){ return; }
-    this.render();
-  },
-  render(){
-    const b = $('#inboxBar'), n = this.items.length;
-    b.hidden = !n;
-    if(n) b.innerHTML = `📥 새로 들어온 결제 <b>${n}</b>건 · 눌러서 확인`;
-  },
-  open(){
-    if(!this.items.length){ toast('새로 들어온 결제가 없어요'); return; }
-    this.reviewing = this.items.map(i=>i.id);
-    const texts = this.items.map(i=>i.text);
-    $('#pasteSheet').classList.add('on');
-    $('#pasteText').value = texts.join('\n\n');
-    runParse(texts);
-  },
-  async done(){ // 확인한 문자는 받은편지함에서 지움
-    const ids = this.reviewing; this.reviewing = [];
-    if(!ids.length) return;
-    try{ await fetch('api/inbox', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids})}); }catch(e){}
-    this.items = this.items.filter(i=>!ids.includes(i.id)); this.render();
-  },
-  closed(){
-    if(!this.reviewing.length) return;
-    if(confirm('확인한 문자를 받은편지함에서 지울까요?\n(나중에 다시 보려면 [취소])')) this.done();
-    else this.reviewing = [];
-  },
-  async renderSettings(){
-    const card = $('#inboxCard'); if(!card) return;
-    card.hidden = !Sync.on;
-    if(!Sync.on) return;
-    try{
-      const j = await (await fetch('api/inbox-key', {cache:'no-store'})).json();
-      $('#inboxKeyInfo').innerHTML = j.hasKey
-        ? `🔑 연결 열쇠 있음 <span class="dim">(${new Date(j.createdAt).toLocaleDateString('ko-KR')} 만듦)</span>`
-        : '<span class="dim">아직 연결 열쇠가 없어요. 아래 버튼으로 만들어 주세요.</span>';
-      $('#inboxMakeKey').textContent = j.hasKey ? '🔑 열쇠 새로 만들기' : '🔑 연결 열쇠 만들기';
-      this.hasKey = j.hasKey;
-    }catch(e){}
-  },
-  async makeKey(){
-    if(this.hasKey && !confirm('새 열쇠를 만들면 예전 열쇠는 바로 못 쓰게 돼요.\nMacroDroid에도 새 열쇠를 넣어야 해요. 만들까요?')) return;
-    let j;
-    try{ j = await (await fetch('api/inbox-key', {method:'POST'})).json(); }catch(e){}
-    if(!j || !j.key){ toast('열쇠를 만들지 못했어요'); return; }
-    this.lastKey = j.key; this.hasKey = true;
-    const url = location.origin + '/api/inbox';
-    const box = $('#inboxSetup'); box.hidden = false;
-    box.innerHTML = `
-      <p class="small" style="margin:12px 0 4px"><b>① 주소</b> <button class="lnk" data-copy="${url}">복사</button></p><div class="keybox">${url}</div>
-      <p class="small" style="margin:10px 0 4px"><b>② 연결 열쇠</b> <button class="lnk" data-copy="${j.key}">복사</button> <span class="dim">· 지금만 보여요</span></p><div class="keybox">${j.key}</div>
-      <ol class="steps">
-        <li>Play 스토어에서 <b>MacroDroid</b> 설치 → <b>매크로 추가(+)</b></li>
-        <li><b>트리거</b> → 장치 이벤트 → <b>알림 수신</b> → 카드 앱 고르기 (신한 SOL페이·KB Pay·롯데카드 등)<br><span class="dim">문자로 받으면: 통화/SMS → <b>SMS 수신</b> → 내용에 <code>승인</code> 포함</span></li>
-        <li><b>동작</b> → 인터넷/웹 → <b>HTTP 요청</b><br>방법 <code>POST</code> · URL에 ① 붙여넣기<br>헤더 추가: 이름 <code>X-Inbox-Key</code> · 값에 ② 붙여넣기<br>본문(Body): 콘텐츠 유형 <code>text/plain</code><br>내용: 알림이면 <code>[not_title] [notification]</code>, 문자면 <code>[sms_message]</code></li>
-        <li>저장한 뒤 아래 <b>🧪 시험 보내기</b>로 확인</li>
-      </ol>
-      <button class="btn ghost" id="inboxTest" style="width:100%;margin-top:10px">🧪 시험 보내기</button>`;
-    box.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{ try{ await navigator.clipboard.writeText(b.dataset.copy); toast('📋 복사했어요'); }catch(e){ toast('길게 눌러서 복사해 주세요'); } });
-    $('#inboxTest').onclick = ()=>this.test();
-    this.renderSettings();
-  },
-  async test(){
-    if(!this.lastKey) return;
-    const d = new Date(), stamp = `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    try{
-      const r = await fetch('api/inbox', {method:'POST', headers:{'X-Inbox-Key':this.lastKey, 'Content-Type':'text/plain'}, body:`[Web발신]\n신한카드(0000)승인 1,000원(일시불)${stamp} 깡총 시험가게`});
-      if(!r.ok) throw 0;
-      await this.refresh(); showPage('home'); toast('🧪 시험 결제 1건이 들어왔어요! 위의 분홍 버튼을 눌러 보세요');
-    }catch(e){ toast('시험 보내기에 실패했어요'); }
-  },
-};
 
 /* ================= 엑셀 불러오기 ================= */
 const XLSX_URL = 'vendor/xlsx.full.min.js'; // SheetJS 0.18.5 (Apache-2.0)
@@ -3150,9 +3048,6 @@ setListView((()=>{ try{ return localStorage.getItem('kkulkkul-listview'); }catch
 $('#syncNow').onclick = ()=>Sync.pull();
 $('#syncLogout').onclick = ()=>Sync.logout();
 $('#syncHistory').onclick = ()=>Sync.restoreHistory();
-$('#inboxBar').onclick = ()=>Inbox.open();
-$('#inboxMakeKey').onclick = ()=>Inbox.makeKey();
-$('#inboxCheck').onclick = async ()=>{ await Inbox.refresh(); toast(Inbox.items.length ? `📥 새로 들어온 결제 ${Inbox.items.length}건` : '새로 들어온 결제가 없어요'); if(Inbox.items.length) showPage('home'); };
 Sync.render();
 Sync.start();
 
