@@ -1,0 +1,6 @@
+{
+  "name": "kangchong-budget",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" }
+}

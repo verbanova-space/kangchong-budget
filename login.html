@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#FFE4EC">
+<meta name="robots" content="noindex">
+<title>깡총 가계부 로그인</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root{--pink:#D9577E;--ink:#4A3B3F;--soft:#9A5B6E}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;color:var(--ink);
+    background:linear-gradient(160deg,#FFE4EC 0%,#FFD6E2 50%,#FFE9D6 100%)}
+  .card{width:100%;max-width:360px;background:#fff;border-radius:28px;padding:32px 24px 28px;text-align:center;box-shadow:0 10px 0 #F7C3D3}
+  .logo{width:120px;height:120px}
+  h1{margin:8px 0 4px;font-size:26px;color:var(--pink)}
+  p{margin:0;color:var(--soft);font-size:15px;line-height:1.6}
+  #btn{display:flex;justify-content:center;margin:22px 0 6px;min-height:44px}
+  #msg{min-height:22px;margin-top:10px;font-size:14px;color:var(--soft)}
+  #msg.err{color:#D64545}
+  .small{font-size:12px;color:#B48A97;margin-top:16px}
+</style>
+</head>
+<body>
+<main class="card">
+  <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
+    <g transform="rotate(-10 38 30)"><ellipse cx="38" cy="26" rx="9" ry="22" fill="#FFFFFF" stroke="#F3D3DC" stroke-width="2"/><ellipse cx="38" cy="27" rx="4.5" ry="16" fill="#FFC2D1"/></g>
+    <g transform="rotate(12 62 30)"><ellipse cx="62" cy="26" rx="9" ry="22" fill="#FFFFFF" stroke="#F3D3DC" stroke-width="2"/><ellipse cx="62" cy="27" rx="4.5" ry="16" fill="#FFC2D1"/></g>
+    <ellipse cx="50" cy="64" rx="33" ry="29" fill="#FFFFFF" stroke="#F3D3DC" stroke-width="2"/>
+    <ellipse cx="40" cy="59" rx="3.6" ry="4.2" fill="#4A3B3F"/><ellipse cx="60" cy="59" rx="3.6" ry="4.2" fill="#4A3B3F"/>
+    <circle cx="41.3" cy="57.4" r="1.4" fill="#fff"/><circle cx="61.3" cy="57.4" r="1.4" fill="#fff"/>
+    <ellipse cx="29" cy="68" rx="6" ry="4" fill="#FF9DB5" opacity=".55"/><ellipse cx="71" cy="68" rx="6" ry="4" fill="#FF9DB5" opacity=".55"/>
+    <path d="M47.5 66.5h5l-2.5 3z" fill="#FF8FAB" stroke="#FF8FAB" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M46 72q2 3 4 0q2 3 4 0" stroke="#4A3B3F" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  </svg>
+  <h1>깡총 가계부</h1>
+  <p>허락된 구글 아이디로만 열 수 있어요.</p>
+  <div id="btn"></div>
+  <div id="msg">잠깐만요…</div>
+  <div class="small">🔒 다른 사람은 로그인해도 가계부를 볼 수 없어요</div>
+</main>
+<script>
+'use strict';
+const msg = (t, err) => { const m = document.getElementById('msg'); m.textContent = t; m.className = err ? 'err' : ''; };
+
+async function onCredential(resp){
+  msg('확인하는 중…');
+  try{
+    const r = await fetch('/api/session', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({credential: resp.credential})});
+    const j = await r.json().catch(() => ({}));
+    if(r.ok){ msg('반가워요! 🐰'); location.replace('/'); return; }
+    if(j.error === 'not_allowed') msg(`${j.email || '이 아이디'}는 허락되지 않은 아이디예요.`, true);
+    else msg('로그인을 확인하지 못했어요. 다시 해 주세요.', true);
+  }catch(e){
+    msg('인터넷 연결을 확인해 주세요.', true);
+  }
+}
+
+async function start(){
+  let s;
+  try{ s = await (await fetch('/api/session', {cache: 'no-store'})).json(); }
+  catch(e){ msg('인터넷 연결을 확인해 주세요.', true); return; }
+  if(s.email){ location.replace('/'); return; }
+  if(!s.clientId){ msg('아직 설정이 끝나지 않았어요 (GOOGLE_CLIENT_ID).', true); return; }
+  const go = () => {
+    google.accounts.id.initialize({client_id: s.clientId, callback: onCredential, auto_select: true, cancel_on_tap_outside: false});
+    google.accounts.id.renderButton(document.getElementById('btn'), {theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', locale: 'ko', width: 260});
+    google.accounts.id.prompt();
+    msg(s.ready ? '' : '⚠️ 저장소나 허락 목록 설정이 아직 안 됐어요.', !s.ready);
+  };
+  if(window.google && google.accounts) go();
+  else{
+    const sc = document.createElement('script');
+    sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = go; sc.onerror = () => msg('구글 로그인을 불러오지 못했어요.', true);
+    document.head.appendChild(sc);
+  }
+}
+start();
+</script>
+</body>
+</html>

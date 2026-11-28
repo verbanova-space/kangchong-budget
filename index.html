@@ -348,6 +348,16 @@ body.selmode .toast{bottom:calc(270px + env(safe-area-inset-bottom))}
     <p class="small dim" style="margin:0 0 6px">문자 붙여넣기에서 카테고리를 고르면 자동으로 기억해요.</p>
     <div id="ruleList"></div>
   </div>
+  <div class="card" id="syncCard" hidden>
+    <h2>☁️ 서버 저장</h2>
+    <p class="small dim" style="margin:0 0 8px">로그인한 기기끼리 기록이 자동으로 맞춰져요. 사진은 지금처럼 이 기기에만 있어요.</p>
+    <div id="syncInfo" class="small" style="margin:0 0 10px"></div>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="btn ghost" id="syncNow">🔄 지금 맞추기</button>
+      <button class="btn ghost" id="syncHistory">🕰 예전 저장본</button>
+      <button class="btn danger" id="syncLogout">로그아웃</button>
+    </div>
+  </div>
   <div class="card">
     <h2>💾 백업</h2>
     <p class="small dim" style="margin:0 0 8px">데이터는 이 폰에만 저장돼요. 내역·설정·사진을 파일 하나로 만들어 <b>구글 드라이브나 카톡 ‘나에게 보내기’</b>로 보내두면 폰을 잃어버려도 복구할 수 있어요.</p>
@@ -683,7 +693,153 @@ function load(){
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(S)); }
   catch(e){ toast('저장 실패: 저장 공간을 확인하세요'); }
+  try{ Sync.markDirty(); }catch(e){}
 }
+
+/* ================= ☁️ 서버 저장 (Vercel에서 로그인했을 때만) =================
+   - 서버가 없는 곳(GitHub Pages·인터넷 끊김)에서는 지금처럼 이 기기에만 저장
+   - 바꿀 때마다 잠시 뒤 서버에 저장, 앱을 다시 열면 다른 기기에서 바뀐 걸 가져옴
+   - 두 기기에서 따로 바꿨으면 내역을 합침 (지우지 않음), 합치기 전 이 기기 기록은 따로 보관 */
+const SYNC_META = 'kkulkkul-sync', SYNC_KEEP = 'budget-app-v1-before-sync';
+function hasContent(d){ return !!d && ['tx','fixed','inst','goals'].some(k=>(d[k]||[]).length); }
+function mergeData(server, local){ // 설정은 서버 기준, 내역·고정지출·할부·목표는 둘 다 살림
+  const out = JSON.parse(JSON.stringify(server));
+  for(const k of ['tx','fixed','inst','goals']){
+    const list = out[k] = out[k] || [];
+    const ids = new Set(list.map(x=>x && x.id).filter(Boolean));
+    for(const x of (local[k]||[])){
+      if(!x || !x.id || ids.has(x.id)) continue;
+      if(k==='tx' && x.fixedId && x.auto && list.some(t=>t.fixedId===x.fixedId && String(t.date).slice(0,7)===String(x.date).slice(0,7))) continue; // 자동 기록 중복 방지
+      list.push(JSON.parse(JSON.stringify(x))); ids.add(x.id);
+    }
+  }
+  out.lastBackup = Math.max(server.lastBackup||0, local.lastBackup||0);
+  return out;
+}
+const Sync = {
+  on:false, email:'', busy:false, timer:0, changeNo:0, tries:0, hooked:false, state:'local',
+  meta(){ try{ return JSON.parse(localStorage.getItem(SYNC_META)) || {}; }catch(e){ return {}; } },
+  setMeta(m){ try{ localStorage.setItem(SYNC_META, JSON.stringify(Object.assign(this.meta(), m))); }catch(e){} },
+  set(state){ this.state = state; this.render(); },
+  render(){
+    const card = $('#syncCard'), el = $('#syncInfo'); if(!card || !el) return;
+    card.hidden = !this.on && !this.meta().email;
+    const m = this.meta();
+    const when = m.savedAt ? new Date(m.savedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    const label = {ok:`✅ 서버에 저장됨${when?' · '+when:''}`, saving:'⏳ 저장하는 중…', offline:'📴 인터넷이 끊겨서 이 기기에만 저장 중 (연결되면 자동으로 올라가요)', error:'⚠️ 서버에 저장하지 못했어요. 잠시 뒤 다시 할게요', local:'이 기기에만 저장 중'}[this.state] || '';
+    el.innerHTML = `${label}<br><span class="dim">${m.email||this.email||''}</span>`;
+  },
+  hook(){
+    if(this.hooked) return; this.hooked = true;
+    addEventListener('online', ()=>this.pull());
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') this.pull(); else if(this.on && this.meta().dirty) this.push(); });
+  },
+  async start(){
+    if(!location.protocol.startsWith('http')) return;
+    this.hook();
+    let r;
+    try{ r = await fetch('api/session', {cache:'no-store'}); }
+    catch(e){ if(this.meta().email) this.set('offline'); return; }
+    if(!r.ok) return; // 서버 없는 곳 → 이 기기에만 저장
+    const j = await r.json().catch(()=>null);
+    if(!j || !('clientId' in j)) return;
+    if(!j.email){ location.replace('login.html'); return; }
+    this.on = true; this.email = j.email; this.setMeta({email:j.email});
+    this.render();
+    await this.pull();
+  },
+  markDirty(){
+    this.changeNo++; this.setMeta({dirty:true});
+    if(!this.on) return;
+    clearTimeout(this.timer); this.timer = setTimeout(()=>this.push(), 1500);
+    this.set('saving');
+  },
+  keepCopy(){ try{ localStorage.setItem(SYNC_KEEP, JSON.stringify({at:Date.now(), data:S})); }catch(e){} },
+  apply(data){ localStorage.setItem(KEY, JSON.stringify(data)); S = load(); runAuto(); renderAll(); },
+  async reconcile(srv){
+    const m = this.meta(), mine = hasContent(S);
+    if(!srv.data){ // 서버가 비어 있음 → 이 기기 기록을 올림 (빈 기기는 아무것도 안 올림)
+      const up = mine; // 빈 기기는 절대 올리지 않음
+      this.setMeta({version:srv.version||0, synced:true, dirty: up});
+      this.set(up ? 'saving' : 'ok');
+      return;
+    }
+    if(m.synced && srv.version===m.version){ this.set(m.dirty?'saving':'ok'); return; }
+    this.keepCopy();
+    if(mine && (m.dirty || !m.synced)){ // 이 기기에도 새 기록이 있음 → 합쳐서 다시 올림
+      this.setMeta({version:srv.version, synced:true, dirty:true, savedAt:srv.updatedAt});
+      this.apply(mergeData(srv.data, S));
+      this.setMeta({dirty:true});
+      toast('☁️ 다른 기기 기록과 합쳤어요');
+    }else{
+      const first = !m.synced;
+      this.setMeta({version:srv.version, synced:true, dirty:false, savedAt:srv.updatedAt});
+      this.apply(srv.data);
+      this.set(this.meta().dirty?'saving':'ok');
+      if(!first) toast('☁️ 다른 기기에서 바뀐 내용을 가져왔어요');
+    }
+  },
+  async pull(){
+    if(!this.on) return this.start();
+    if(this.busy) return;
+    this.busy = true;
+    try{
+      const r = await fetch('api/state', {cache:'no-store'});
+      if(r.status===401){ location.replace('login.html'); return; }
+      if(!r.ok) throw new Error('http '+r.status);
+      await this.reconcile(await r.json());
+    }catch(e){ this.set(navigator.onLine===false ? 'offline' : 'error'); }
+    finally{ this.busy = false; }
+    if(this.meta().dirty) await this.push();
+  },
+  async push(){
+    if(!this.on) return;
+    if(this.busy){ clearTimeout(this.timer); this.timer = setTimeout(()=>this.push(), 800); return; }
+    const m = this.meta(); if(!m.dirty){ this.set('ok'); return; }
+    this.busy = true; this.set('saving');
+    const no = this.changeNo; let again = false;
+    try{
+      const r = await fetch('api/state', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({baseVersion:m.version||0, data:S})});
+      if(r.status===401){ location.replace('login.html'); return; }
+      const j = await r.json().catch(()=>({}));
+      if(r.status===409 && j.conflict){ // 다른 기기가 먼저 저장 → 합치고 다시
+        await this.reconcile(j);
+        again = ++this.tries <= 3;
+      }else if(r.ok){
+        this.tries = 0;
+        this.setMeta({version:j.version, synced:true, savedAt:j.updatedAt, dirty: this.changeNo!==no});
+        again = this.changeNo!==no;
+        this.set(again ? 'saving' : 'ok');
+      }else throw new Error(j.error || r.status);
+    }catch(e){ this.set(navigator.onLine===false ? 'offline' : 'error'); }
+    finally{ this.busy = false; }
+    if(again) setTimeout(()=>this.push(), 300);
+  },
+  async logout(){
+    if(!confirm('로그아웃할까요?')) return;
+    if(this.meta().dirty) await this.push();
+    const wipe = confirm('이 기기에 남은 가계부 기록도 지울까요?\n(공용 컴퓨터라면 [확인], 내 폰이면 [취소])');
+    try{ await fetch('api/session', {method:'DELETE'}); }catch(e){}
+    if(wipe){ [KEY, SYNC_META, SYNC_KEEP].forEach(k=>localStorage.removeItem(k)); try{ indexedDB.deleteDatabase('kkulkkul-photos'); }catch(e){} }
+    else this.setMeta({email:''});
+    location.replace('login.html');
+  },
+  async restoreHistory(){
+    if(!this.on){ toast('서버에 로그인했을 때만 쓸 수 있어요'); return; }
+    let list;
+    try{ list = (await (await fetch('api/history', {cache:'no-store'})).json()).items || []; }catch(e){ toast('예전 저장본을 불러오지 못했어요'); return; }
+    if(!list.length){ toast('아직 보관된 예전 저장본이 없어요 (1시간마다 하나씩 생겨요)'); return; }
+    const lines = list.map((h,n)=>`${n+1}) ${h.at ? new Date(h.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '날짜 모름'} · 내역 ${h.tx}건`);
+    const pickStr = prompt('되돌릴 저장본 번호를 적어 주세요.\n(되돌리기 전 기록은 이 기기에 따로 보관돼요)\n\n' + lines.join('\n'));
+    const n = parseInt(pickStr, 10); if(!n || n<1 || n>list.length) return;
+    try{
+      const h = await (await fetch('api/history?i='+list[n-1].i, {cache:'no-store'})).json();
+      if(!h.data || !Array.isArray(h.data.tx)) throw 0;
+      if(!confirm(`${lines[n-1]} 저장본으로 되돌릴까요?`)) return;
+      this.keepCopy(); this.apply(h.data); save(); toast('🕰 예전 저장본으로 되돌렸어요');
+    }catch(e){ toast('되돌리지 못했어요'); }
+  },
+};
 
 /* ================= 유틸 ================= */
 const $ = s => document.querySelector(s);
@@ -1727,7 +1883,7 @@ $('#importFile').onchange = async e => {
     const when = d.savedAt ? new Date(d.savedAt).toLocaleDateString('ko-KR')+' ' : '';
     if(!confirm(`${when}백업이에요 (내역 ${d.tx.length}건${Object.keys(photos).length?', 사진 '+Object.keys(photos).length+'장':''}).\n지금 데이터를 이걸로 바꿀까요?`)) return;
     for(const [id, u] of Object.entries(photos)){ try{ await PDB.put(id, await dataUrlToBlob(u)); }catch(e){} }
-    localStorage.setItem(KEY, JSON.stringify(d)); S = load(); renderAll(); toast('♻️ 백업에서 복구했어요!');
+    localStorage.setItem(KEY, JSON.stringify(d)); S = load(); save(); renderAll(); toast('♻️ 백업에서 복구했어요!');
   }catch(err){ toast('백업 파일이 아니에요'); }
   e.target.value='';
 };
@@ -2789,6 +2945,13 @@ runAuto();
 buildKeypad();
 $('#date').value = todayStr();
 renderAmount(); renderAll();
+
+// ☁️ 서버 저장 (Vercel에서 로그인했을 때만 켜짐)
+$('#syncNow').onclick = ()=>Sync.pull();
+$('#syncLogout').onclick = ()=>Sync.logout();
+$('#syncHistory').onclick = ()=>Sync.restoreHistory();
+Sync.render();
+Sync.start();
 
 // 문자 앱에서 '공유'로 들어온 경우
 (function(){
