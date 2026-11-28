@@ -106,6 +106,33 @@ h2{font-family:var(--cute);font-size:17px;margin:0 0 12px;color:var(--text);font
 .monthnav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .monthnav button{width:42px;height:42px;border-radius:50%;background:var(--card);border:2px solid var(--line);box-shadow:var(--sticker);font-size:20px;color:var(--dim)}
 .monthnav b{font-family:var(--cute);font-weight:400;font-size:21px}
+/* 📅 달력 */
+.seg{display:flex;gap:4px;background:var(--card);border:2px solid var(--line);border-radius:99px;padding:4px;margin:0 0 12px;box-shadow:var(--sticker)}
+.seg button{flex:1;padding:9px 0;border-radius:99px;font-family:var(--cute);font-size:16px;color:var(--dim)}
+.seg button.on{background:var(--accent);color:#fff}
+:root{--calin:#3D7BE0;--calout:#E5484D}
+@media (prefers-color-scheme: dark){ :root{--calin:#7FA8F5;--calout:#FF7B7F} }
+.cin{color:var(--calin)} .cexp{color:var(--calout)}
+.calsum{display:flex;padding:14px 8px}
+.calsum>div{flex:1;text-align:center;display:flex;flex-direction:column;gap:3px;min-width:0}
+.calsum>div+div{border-left:2px dashed var(--line)}
+.calsum span{font-size:12px;color:var(--dim)}
+.calsum b{font-size:16px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal{padding:12px 6px 8px}
+.calhead,.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.calhead{text-align:center;font-size:12px;color:var(--dim);margin-bottom:4px;font-weight:600}
+.calhead span:first-child{color:var(--calout)} .calhead span:last-child{color:var(--calin)}
+.calgrid{gap:2px}
+.cd{min-height:60px;border-radius:12px;padding:3px 1px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;color:var(--text);min-width:0;overflow:hidden}
+.cd .n{font-size:13px;font-weight:600;width:24px;height:24px;line-height:24px;text-align:center;border-radius:50%;flex:none}
+.cd.off .n{color:var(--calout)} .cd.sat .n{color:var(--calin)}
+.cd.today .n{background:var(--accent);color:#fff}
+.cd.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.cd .i,.cd .e{font-size:10px;line-height:1.2;font-variant-numeric:tabular-nums;letter-spacing:-.4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:clip}
+.cd .i{color:var(--calin)} .cd .e{color:var(--calout)}
+.cd.blank{visibility:hidden}
+#calDay .dayhead{font-size:15px;color:var(--text);padding:0 4px 8px}
+#calDay .addday{width:100%;margin-top:12px}
 .day{margin-top:14px}
 .day:first-child{margin-top:0}
 .dayhead{display:flex;justify-content:space-between;font-size:13px;color:var(--dim);padding:0 4px 6px;font-weight:600}
@@ -266,16 +293,31 @@ body.selmode .toast{bottom:calc(270px + env(safe-area-inset-bottom))}
 <section class="page" id="page-list">
 <div class="wrap">
   <div class="monthnav"><button id="prevM">‹</button><b id="monthLabel"></b><button id="nextM">›</button></div>
-  <button class="btn ghost" id="openImport" style="width:100%;margin-bottom:12px">📂 카드·통장 내역 불러오기</button>
-  <div class="chips tight" id="pocketFilter" style="margin:0 0 8px"></div>
-  <div class="row between" style="margin:0 2px 10px"><span class="small dim" id="selInfo"></span><span><button class="lnk" id="selAll" style="display:none">전체 선택</button> <button class="lnk" id="selToggle">☑️ 여러 개 고르기</button></span></div>
-  <div class="card">
-    <div class="row between"><span class="dim">지출</span><span class="money" id="mExp"></span></div>
-    <div class="row between" style="margin-top:6px"><span class="dim">수입</span><span class="money inc" id="mInc"></span></div>
+  <div class="seg" id="listSeg"><button data-v="cal">📅 달력</button><button data-v="list">📒 내역</button></div>
+  <div class="chips tight" id="pocketFilter" style="margin:0 0 10px"></div>
+  <div id="calView">
+    <div class="card calsum">
+      <div><span>수입</span><b class="money cin" id="cInc"></b></div>
+      <div><span>지출</span><b class="money cexp" id="cExp"></b></div>
+      <div><span>합계</span><b class="money" id="cNet"></b></div>
+    </div>
+    <div class="card cal">
+      <div class="calhead"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+      <div class="calgrid" id="calGrid"></div>
+    </div>
+    <div class="card" id="calDay"></div>
   </div>
-  <div class="card" id="pocketTrend" style="display:none"></div>
-  <div class="card" id="catBreakdown"></div>
-  <div class="card" id="listBox"></div>
+  <div id="listView" hidden>
+    <button class="btn ghost" id="openImport" style="width:100%;margin-bottom:12px">📂 카드·통장 내역 불러오기</button>
+    <div class="row between" style="margin:0 2px 10px"><span class="small dim" id="selInfo"></span><span><button class="lnk" id="selAll" style="display:none">전체 선택</button> <button class="lnk" id="selToggle">☑️ 여러 개 고르기</button></span></div>
+    <div class="card">
+      <div class="row between"><span class="dim">지출</span><span class="money" id="mExp"></span></div>
+      <div class="row between" style="margin-top:6px"><span class="dim">수입</span><span class="money inc" id="mInc"></span></div>
+    </div>
+    <div class="card" id="pocketTrend" style="display:none"></div>
+    <div class="card" id="catBreakdown"></div>
+    <div class="card" id="listBox"></div>
+  </div>
 </div>
 </section>
 
@@ -1148,6 +1190,57 @@ function renderPocketFilter(){
     .map(([k,l,c])=>`<button class="chip ${listPocket===k?'on':''}" style="--c:${c}" data-k="${k}">${l}</button>`).join('');
   el.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ listPocket = b.dataset.k; renderList(); });
 }
+/* 내역 한 줄 (내역 목록·달력에서 같이 씀) */
+function txItemHTML(t, withSel){
+  const on = withSel && selected.has(t.id);
+  return `<button class="item ${on?'sel':''}" data-id="${t.id}">
+        ${withSel?`<span class="ck">${on?'✓':''}</span>`:''}
+        <span class="ico" style="--c:${catColor(t.cat)}">${cat(t.cat).icon}</span>
+        <span class="txt"><b>${esc(t.memo || cat(t.cat).name)}${pocketOf(t)!=='home'?`<span class="pbadge">${POCKETS[pocketOf(t)].icon}</span>`:''}${matchFixed(t)?'<span class="pbadge">📌</span>':''}${t.note?'<span class="pbadge">📝</span>':''}${(t.photos||[]).length?'<span class="pbadge">📷'+(t.photos.length>1?t.photos.length:'')+'</span>':''}</b><span>${esc(cat(t.cat).name)}${t.time?' · '+t.time:''}${t.card?' · '+esc(t.card):''}${t.inst?`<span class="note">${instNote(t)}</span>`:''}${t.note?`<span class="note">📝 ${esc(t.note.split('\n')[0].slice(0,40))}</span>`:''}</span></span>
+        <span class="money ${t.type==='income'?'inc':'exp'}">${t.type==='income'?'+':'-'}${won(t.amount)}</span>
+      </button>`;
+}
+
+/* ================= 📅 달력 ================= */
+let calSel = null; // 고른 날짜 'YYYY-MM-DD'
+const calNum = n => n >= 1000000 ? Math.round(n/10000).toLocaleString('ko-KR')+'만' : n.toLocaleString('ko-KR'); // 칸이 좁아서 100만 넘으면 '만' 단위
+function renderCal(p, txs){
+  const inc = txs.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
+  const exp = txs.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0);
+  $('#cInc').textContent = won(inc); $('#cExp').textContent = won(exp);
+  $('#cNet').textContent = (inc-exp>0?'+':'') + won(inc-exp);
+  const byDay = {};
+  txs.forEach(t=>{ const d = byDay[t.date] = byDay[t.date] || {i:0, e:0, list:[]}; d[t.type==='income'?'i':'e'] += t.amount; d.list.push(t); });
+  const start = ymd(p.start), end = ymd(p.end), today = todayStr();
+  if(!calSel || calSel < start || calSel > end) calSel = (today >= start && today <= end) ? today : null;
+  let html = '';
+  for(let k = 0; k < p.start.getDay(); k++) html += '<span class="cd blank"></span>';
+  for(let d = new Date(p.start); d <= p.end; d.setDate(d.getDate()+1)){
+    const ds = ymd(d), w = d.getDay(), v = byDay[ds];
+    const cls = ['cd', (w===0 || HOLIDAYS[ds]) ? 'off' : '', w===6 ? 'sat' : '', ds===today ? 'today' : '', ds===calSel ? 'sel' : ''].filter(Boolean).join(' ');
+    html += `<button class="${cls}" data-d="${ds}" title="${HOLIDAYS[ds]||''}"><span class="n">${d.getDate()}</span>${v&&v.i?`<span class="i">+${calNum(v.i)}</span>`:''}${v&&v.e?`<span class="e">-${calNum(v.e)}</span>`:''}</button>`;
+  }
+  $('#calGrid').innerHTML = html;
+  $('#calGrid').querySelectorAll('.cd[data-d]').forEach(b=>b.onclick=()=>{ calSel = b.dataset.d; renderCal(p, txs); });
+  // 고른 날의 내역
+  const box = $('#calDay');
+  if(!calSel){ box.innerHTML = '<div class="empty-msg"><b>📅</b>날짜를 누르면 그날 쓴 내역이 보여요</div>'; return; }
+  const dt = new Date(calSel+'T00:00'), v = byDay[calSel] || {i:0, e:0, list:[]};
+  const list = v.list.slice().sort((a,b)=>(b.time||'').localeCompare(a.time||'') || b.created-a.created);
+  box.innerHTML = `<div class="dayhead"><span>${dt.getMonth()+1}월 ${dt.getDate()}일 (${'일월화수목금토'[dt.getDay()]})${HOLIDAYS[calSel]?' · '+HOLIDAYS[calSel]:''}</span><span>${v.i?`<span class="cin">+${won(v.i)}</span> `:''}${v.e?`<span class="cexp">-${won(v.e)}</span>`:''}</span></div>`
+    + (list.length ? list.map(t=>txItemHTML(t, false)).join('') : '<div class="empty-msg" style="padding:14px 0"><b>🌱</b>이 날은 기록이 없어요</div>')
+    + `<button class="btn ghost addday">＋ 이 날 기록하기</button>`;
+  box.querySelectorAll('.item').forEach(b=>b.onclick=()=>openEdit(b.dataset.id));
+  box.querySelector('.addday').onclick = ()=>{ $('#date').value = calSel; showPage('home'); toast(`📅 ${dt.getMonth()+1}월 ${dt.getDate()}일에 기록해요`); };
+}
+function setListView(v){
+  v = v==='list' ? 'list' : 'cal';
+  try{ localStorage.setItem('kkulkkul-listview', v); }catch(e){}
+  if(v==='cal' && selMode){ selMode = false; selected.clear(); updateSel(); renderList(); }
+  $('#calView').hidden = v!=='cal'; $('#listView').hidden = v!=='list';
+  $('#listSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
+}
+
 function renderList(){
   const p = periodOf(viewDate);
   $('#monthLabel').textContent = p.label;
@@ -1156,6 +1249,7 @@ function renderList(){
   const exp = txs.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0);
   const inc = txs.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
   $('#mExp').textContent = won(exp); $('#mInc').textContent = won(inc);
+  renderCal(p, txs);
 
   // 주머니 하나를 고르면 최근 3달 흐름
   const trend = $('#pocketTrend');
@@ -1188,12 +1282,7 @@ function renderList(){
     const dt = new Date(d+'T00:00');
     const sum = list.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0);
     return `<div class="day"><div class="dayhead"><span>${dt.getMonth()+1}월 ${dt.getDate()}일 (${W[dt.getDay()]})</span><span>${sum?'-'+won(sum):''}</span></div>
-      ${list.map(t=>`<button class="item ${selMode&&selected.has(t.id)?'sel':''}" data-id="${t.id}">
-        ${selMode?`<span class="ck">${selected.has(t.id)?'✓':''}</span>`:''}
-        <span class="ico" style="--c:${catColor(t.cat)}">${cat(t.cat).icon}</span>
-        <span class="txt"><b>${esc(t.memo || cat(t.cat).name)}${pocketOf(t)!=='home'?`<span class="pbadge">${POCKETS[pocketOf(t)].icon}</span>`:''}${matchFixed(t)?'<span class="pbadge">📌</span>':''}${t.note?'<span class="pbadge">📝</span>':''}${(t.photos||[]).length?'<span class="pbadge">📷'+(t.photos.length>1?t.photos.length:'')+'</span>':''}</b><span>${esc(cat(t.cat).name)}${t.time?' · '+t.time:''}${t.card?' · '+esc(t.card):''}${t.inst?`<span class="note">${instNote(t)}</span>`:''}${t.note?`<span class="note">📝 ${esc(t.note.split('\n')[0].slice(0,40))}</span>`:''}</span></span>
-        <span class="money ${t.type==='income'?'inc':'exp'}">${t.type==='income'?'+':'-'}${won(t.amount)}</span>
-      </button>`).join('')}</div>`;
+      ${list.map(t=>txItemHTML(t, selMode)).join('')}</div>`;
   }).join('');
   $('#listBox').querySelectorAll('.item').forEach(b=>b.onclick=()=>{
     if(!selMode){ openEdit(b.dataset.id); return; }
@@ -2945,6 +3034,10 @@ runAuto();
 buildKeypad();
 $('#date').value = todayStr();
 renderAmount(); renderAll();
+
+// 📅 달력 / 📒 내역 전환 (마지막에 본 걸 기억)
+$('#listSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>setListView(b.dataset.v));
+setListView((()=>{ try{ return localStorage.getItem('kkulkkul-listview'); }catch(e){ return null; } })() || 'cal');
 
 // ☁️ 서버 저장 (Vercel에서 로그인했을 때만 켜짐)
 $('#syncNow').onclick = ()=>Sync.pull();
