@@ -31,6 +31,7 @@
 - `api/session.js` — 구글 로그인 토큰 확인(구글 공개키로 서명·발급자·대상·만료 확인) → 30일 로그인 쿠키(HttpOnly·Secure·SameSite=Lax, HMAC 서명)
 - `api/state.js` — 기록 읽기·저장. 버전이 다르면 409로 돌려줘서 앱이 합친 뒤 다시 저장
 - `api/history.js` — 1시간에 한 번, 최대 30개 보관하는 예전 저장본
+- `api/inbox.js`, `api/inbox-key.js` — 📥 받은편지함. MacroDroid가 카드 문자·알림을 `X-Inbox-Key` 열쇠로 보내 두면 앱이 열릴 때 확인 화면으로 보여 줌. 열쇠로는 넣기만 되고 읽기는 로그인해야 함. 서버에는 열쇠의 지문(SHA-256)만 저장
 - 사진은 서버로 보내지 않고 기기에만 있어요
 
 포함된 외부 코드: `vendor/xlsx.full.min.js` — SheetJS 0.18.5 (Apache-2.0)
